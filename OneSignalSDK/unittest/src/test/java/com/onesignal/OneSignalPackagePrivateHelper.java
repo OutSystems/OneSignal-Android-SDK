@@ -1,18 +1,21 @@
 package com.onesignal;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
 import android.os.Looper;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
-import org.robolectric.shadows.ShadowMessageQueue;
 import org.robolectric.util.Scheduler;
 
 import java.lang.reflect.Field;
-import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Set;
 
@@ -146,20 +149,24 @@ public class OneSignalPackagePrivateHelper {
 
    public static class PushRegistratorGCM extends com.onesignal.PushRegistratorGCM {}
 
+   public static class OneSignalRestClient extends com.onesignal.OneSignalRestClient {
+      public static abstract class ResponseHandler extends com.onesignal.OneSignalRestClient.ResponseHandler {
+         @Override
+         public void onSuccess(String response) {}
+         @Override
+         public void onFailure(int statusCode, String response, Throwable throwable) {}
+      }
+   }
+
    public static String NotificationChannelManager_createNotificationChannel(Context context, JSONObject payload) {
       NotificationGenerationJob notifJob = new NotificationGenerationJob(context);
       notifJob.jsonPayload = payload;
       return NotificationChannelManager.createNotificationChannel(notifJob);
    }
    
-   public static void NotificationChannelManager_processChannelList(Context context, JSONObject jsonObject) {
-      NotificationChannelManager.processChannelList(context, jsonObject);
+   public static void NotificationChannelManager_processChannelList(Context context, JSONArray jsonArray) {
+      NotificationChannelManager.processChannelList(context, jsonArray);
    }
-   
-   public static void OneSignalRestClientPublic_getSync(final String url, final OneSignalRestClient.ResponseHandler responseHandler) {
-      OneSignalRestClient.getSync(url, responseHandler);
-   }
-   
    
    public static void NotificationOpenedProcessor_processFromContext(Context context, Intent intent) {
       NotificationOpenedProcessor.processFromContext(context, intent);
@@ -181,6 +188,128 @@ public class OneSignalPackagePrivateHelper {
 
    public static String OneSignal_appId() { return OneSignal.appId; }
 
-
    public static void OneSignal_setAppContext(Context context) { OneSignal.setAppContext(context); }
+   
+   static public class BadgeCountUpdater extends com.onesignal.BadgeCountUpdater {
+      public static void update(SQLiteDatabase readableDb, Context context) {
+         com.onesignal.BadgeCountUpdater.update(readableDb, context);
+      }
+   }
+
+   static public class NotificationLimitManager extends com.onesignal.NotificationLimitManager {
+      public static void clearOldestOverLimitFallback(Context context, int notifsToMakeRoomFor) {
+         com.onesignal.NotificationLimitManager.clearOldestOverLimitFallback(context, notifsToMakeRoomFor);
+      }
+
+      public static void clearOldestOverLimitStandard(Context context, int notifsToMakeRoomFor) throws Throwable {
+         com.onesignal.NotificationLimitManager.clearOldestOverLimitStandard(context, notifsToMakeRoomFor);
+      }
+   }
+
+   public class OneSignalDbContract extends com.onesignal.OneSignalDbContract {}
+
+   /** In-App Messaging Helpers */
+
+   public static class OSTestInAppMessage extends com.onesignal.OSInAppMessage {
+
+      public OSTestInAppMessage(JSONObject json) throws JSONException {
+         super(json);
+      }
+
+      @Override
+      ArrayList<ArrayList<OSTrigger>> parseTriggerJson(JSONArray triggersJson) throws JSONException {
+         ArrayList<ArrayList<OSTrigger>> parsedTriggers = new ArrayList<>();
+
+         for (int i = 0; i < triggersJson.length(); i++) {
+            JSONArray ands = triggersJson.getJSONArray(i);
+
+            ArrayList parsed = new ArrayList();
+
+            for (int j = 0; j < ands.length(); j++) {
+               OSTestTrigger trig = new OSTestTrigger(ands.getJSONObject(j));
+
+               parsed.add(trig);
+            }
+
+            parsedTriggers.add(parsed);
+         }
+
+         return parsedTriggers;
+      }
+
+      public JSONObject toJSONObject() {
+         return super.toJSONObject();
+      }
+   }
+
+   public static class OSTestTrigger extends com.onesignal.OSTrigger {
+      public OSTestTrigger(JSONObject json) throws JSONException {
+         super(json);
+      }
+   }
+
+   public static class OSTestInAppMessageAction extends com.onesignal.OSInAppMessageAction {
+      public boolean closes() {
+         return closesMessage;
+      }
+      public String getClickId() { return clickId; }
+
+      public OSTestInAppMessageAction(JSONObject json) throws JSONException {
+         super(json);
+      }
+   }
+
+   public static void dismissCurrentMessage() {
+      com.onesignal.OSInAppMessage message = com.onesignal.OSInAppMessageController.getController().getCurrentDisplayedInAppMessage();
+      com.onesignal.OSInAppMessageController.getController().messageWasDismissed(message);
+   }
+
+   public static class OSInAppMessageController extends com.onesignal.OSInAppMessageController {
+      private static OSInAppMessageController sharedInstance;
+
+      public static OSInAppMessageController getController() {
+         if (sharedInstance == null)
+            sharedInstance = new OSInAppMessageController();
+
+         return sharedInstance;
+      }
+      public void onMessageActionOccurredOnMessage(@NonNull final com.onesignal.OSInAppMessage message, @NonNull final JSONObject actionJson) {
+         super.onMessageActionOccurredOnMessage(message, actionJson);
+      }
+
+      public void onMessageWasShown(@NonNull com.onesignal.OSInAppMessage message) {
+         com.onesignal.OSInAppMessageController.getController().onMessageWasShown(message);
+      }
+   }
+
+   public static class OSInAppMessage extends com.onesignal.OSInAppMessage {
+      public OSInAppMessage(JSONObject json) throws JSONException {
+         super(json);
+      }
+   }
+
+   public static boolean hasConfigChangeFlag(Activity activity, int configChangeFlag) {
+      return OSUtils.hasConfigChangeFlag(activity, configChangeFlag);
+   }
+
+   public abstract class UserState extends com.onesignal.UserState {
+      UserState(String inPersistKey, boolean load) {
+         super(inPersistKey, load);
+      }
+   }
+
+   public static class WebViewManager extends com.onesignal.WebViewManager {
+
+      public static void callDismissAndAwaitNextMessage() {
+         lastInstance.dismissAndAwaitNextMessage(null);
+      }
+
+      public void dismissAndAwaitNextMessage(@Nullable final OneSignalGenericCallback callback) {
+         super.dismissAndAwaitNextMessage(callback);
+      }
+
+      protected WebViewManager(@NonNull com.onesignal.OSInAppMessage message, @NonNull Activity activity) {
+         super(message, activity);
+      }
+   }
 }

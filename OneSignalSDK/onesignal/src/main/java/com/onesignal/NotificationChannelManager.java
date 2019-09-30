@@ -34,6 +34,8 @@ import android.app.NotificationManager;
 import android.content.Context;
 import android.net.Uri;
 import android.os.Build;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.annotation.RequiresApi;
 import android.support.v4.app.NotificationManagerCompat;
 
@@ -45,6 +47,8 @@ import java.math.BigInteger;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 
 class NotificationChannelManager {
    
@@ -54,6 +58,7 @@ class NotificationChannelManager {
 
    private static final String DEFAULT_CHANNEL_ID = "fcm_fallback_notification_channel";
    private static final String RESTORE_CHANNEL_ID = "restored_OS_notifications";
+   private static final Pattern hexPattern = Pattern.compile("^([A-Fa-f0-9]{8})$");
    
    static String createNotificationChannel(NotificationGenerationJob notifJob) {
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O)
@@ -62,8 +67,7 @@ class NotificationChannelManager {
       Context context = notifJob.context;
       JSONObject jsonPayload = notifJob.jsonPayload;
 
-      NotificationManager notificationManager =
-            (NotificationManager)context.getSystemService(Context.NOTIFICATION_SERVICE);
+      NotificationManager notificationManager = OneSignalNotificationManager.getNotificationManager(context);
 
       if (notifJob.restoring)
          return createRestoreChannel(notificationManager);
@@ -128,8 +132,21 @@ class NotificationChannelManager {
       }
 
       if (payload.has("ledc")) {
-         BigInteger ledColor = new BigInteger(payload.optString("ledc"), 16);
-         channel.setLightColor(ledColor.intValue());
+         String ledc = payload.optString("ledc");
+         Matcher matcher = hexPattern.matcher(ledc);
+         BigInteger ledColor;
+
+         if (!matcher.matches()) {
+            OneSignal.Log(OneSignal.LOG_LEVEL.WARN, "OneSignal LED Color Settings: ARGB Hex value incorrect format (E.g: FF9900FF)");
+            ledc = "FFFFFFFF";
+         }
+
+         try {
+            ledColor = new BigInteger(ledc, 16);
+            channel.setLightColor(ledColor.intValue());
+         } catch (Throwable t) {
+            OneSignal.Log(OneSignal.LOG_LEVEL.ERROR, "Couldn't convert ARGB Hex value to BigInteger:", t);
+         }
       }
       channel.enableLights(payload.optInt("led", 1) == 1);
 
@@ -185,22 +202,20 @@ class NotificationChannelManager {
       return RESTORE_CHANNEL_ID;
    }
    
-   static void processChannelList(Context context, JSONObject payload) {
+   static void processChannelList(@NonNull Context context, @Nullable JSONArray list) {
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O)
          return;
 
-      if (!payload.has("chnl_lst"))
+      if (list == null)
          return;
 
-      NotificationManager notificationManager =
-         (NotificationManager)context.getSystemService(Context.NOTIFICATION_SERVICE);
+      NotificationManager notificationManager = OneSignalNotificationManager.getNotificationManager(context);
       
-      Set<String> sycnedChannelSet = new HashSet<>();
-      JSONArray chnlList = payload.optJSONArray("chnl_lst");
-      int jsonArraySize = chnlList.length();
+      Set<String> syncedChannelSet = new HashSet<>();
+      int jsonArraySize = list.length();
       for (int i = 0; i < jsonArraySize; i++) {
          try {
-            sycnedChannelSet.add(createChannel(context, notificationManager, chnlList.getJSONObject(i)));
+            syncedChannelSet.add(createChannel(context, notificationManager, list.getJSONObject(i)));
          } catch (JSONException e) {
             OneSignal.Log(OneSignal.LOG_LEVEL.ERROR, "Could not create notification channel due to JSON payload error!", e);
          }
@@ -211,7 +226,7 @@ class NotificationChannelManager {
       List<NotificationChannel> existingChannels = notificationManager.getNotificationChannels();
       for(NotificationChannel existingChannel : existingChannels) {
          String id = existingChannel.getId();
-         if (id.startsWith("OS_") && !sycnedChannelSet.contains(id))
+         if (id.startsWith("OS_") && !syncedChannelSet.contains(id))
             notificationManager.deleteNotificationChannel(id);
       }
    }

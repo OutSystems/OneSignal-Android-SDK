@@ -27,6 +27,8 @@
 
 package com.onesignal;
 
+import com.test.onesignal.RestClientValidator;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.robolectric.annotation.Implements;
@@ -34,6 +36,7 @@ import org.robolectric.annotation.Implements;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 @Implements(OneSignalRestClient.class)
 public class ShadowOneSignalRestClient {
@@ -74,18 +77,29 @@ public class ShadowOneSignalRestClient {
    public static JSONObject lastPost;
    public static ArrayList<Request> requests;
    public static String lastUrl;
-   public static boolean failNext, failNextPut, failAll, failPosts;
-   public static String failResponse, nextSuccessResponse, nextSuccessfulGETResponse;
+   public static boolean failNext, failNextPut, failAll, failPosts, failGetParams;
+   public static int failHttpCode;
+   public static String failResponse, nextSuccessResponse, nextSuccessfulGETResponse, nextSuccessfulRegistrationResponse;
+   public static Pattern nextSuccessfulGETResponsePattern;
    public static int networkCallCount;
 
    public static String pushUserId, emailUserId;
 
    public static JSONObject paramExtras;
-
+   
    // Pauses any network callbacks from firing.
    // Also blocks any sync network calls.
    public static boolean freezeResponses;
    private static ConcurrentHashMap<Object, PendingResponse> pendingResponses;
+
+   private static final String IAM_GET_HTML_RESPONSE;
+   static {
+      String value = null;
+      try {
+         value = new JSONObject().put("html", "<html></html>").toString();
+      } catch (JSONException e) { }
+      IAM_GET_HTML_RESPONSE = value;
+   }
 
    public static void resetStatics() {
       pushUserId = "a2f7f967-e8cc-11e4-bed1-118f05be4511";
@@ -96,13 +110,17 @@ public class ShadowOneSignalRestClient {
       networkCallCount = 0;
 
       nextSuccessfulGETResponse = null;
+      nextSuccessfulGETResponsePattern = null;
 
       failResponse = "{}";
+      nextSuccessfulRegistrationResponse = null;
       nextSuccessResponse = null;
       failNext = false;
       failNextPut = false;
       failAll = false;
       failPosts = false;
+      failGetParams = false;
+      failHttpCode = 400;
 
       paramExtras = null;
 
@@ -123,6 +141,22 @@ public class ShadowOneSignalRestClient {
             System.out.println("End thread notify: " + thread);
          }
       }
+   }
+
+   public static void setNextSuccessfulJSONResponse(JSONObject response) throws JSONException {
+      nextSuccessResponse = response.toString(1);
+   }
+
+   public static void setNextFailureJSONResponse(JSONObject response) throws JSONException {
+      failResponse = response.toString(1);
+   }
+
+   public static void setNextSuccessfulGETJSONResponse(JSONObject response) throws JSONException {
+      nextSuccessfulGETResponse = response.toString(1);
+   }
+
+   public static void setNextSuccessfulRegistrationResponse(JSONObject response) throws JSONException {
+      nextSuccessfulRegistrationResponse = response.toString(1);
    }
 
    private static void freezeSyncCall() {
@@ -147,13 +181,16 @@ public class ShadowOneSignalRestClient {
       }
    }
 
-   private static void trackRequest(REST_METHOD method, JSONObject payload, String url) {
+   private static void trackRequest(REST_METHOD method, JSONObject payload, String url) throws JSONException {
       if (method == REST_METHOD.POST || method == REST_METHOD.PUT)
          lastPost = payload;
       lastUrl = url;
       networkCallCount++;
 
-      requests.add(new Request(method, payload, url));
+      Request request = new Request(method, payload, url);
+      requests.add(request);
+
+      RestClientValidator.validateRequest(request);
 
       System.out.println(networkCallCount + ":" + method + "@URL:" + url + "\nBODY: " + payload);
    }
@@ -172,7 +209,7 @@ public class ShadowOneSignalRestClient {
    private static boolean doFail(OneSignalRestClient.ResponseHandler responseHandler, boolean doFail) {
       if (failNext || failAll || doFail) {
          if (!suspendResponse(false, failResponse, responseHandler))
-            responseHandler.onFailure(400, failResponse, new Exception());
+            responseHandler.onFailure(failHttpCode, failResponse, new Exception());
          failNext = failNextPut = false;
          return true;
       }
@@ -188,7 +225,12 @@ public class ShadowOneSignalRestClient {
       if (doFail(responseHandler, failPosts)) return;
 
       String retJson;
-      if (url.contains("on_session"))
+
+      if (nextSuccessfulRegistrationResponse != null) {
+         retJson = nextSuccessfulRegistrationResponse;
+         nextSuccessfulRegistrationResponse = null;
+      }
+      else if (url.contains("on_session"))
          retJson = "{}";
       else {
          int device_type = jsonBody.optInt("device_type", 0);
@@ -209,18 +251,18 @@ public class ShadowOneSignalRestClient {
       }
    }
 
-   public static void post(String url, JSONObject jsonBody, OneSignalRestClient.ResponseHandler responseHandler) {
+   public static void post(String url, JSONObject jsonBody, OneSignalRestClient.ResponseHandler responseHandler) throws JSONException {
       trackRequest(REST_METHOD.POST, jsonBody, url);
       mockPost(url, jsonBody, responseHandler);
    }
 
-   public static void postSync(String url, JSONObject jsonBody, OneSignalRestClient.ResponseHandler responseHandler) {
+   public static void postSync(String url, JSONObject jsonBody, OneSignalRestClient.ResponseHandler responseHandler) throws JSONException {
       trackRequest(REST_METHOD.POST, jsonBody, url);
       freezeSyncCall();
       mockPost(url, jsonBody, responseHandler);
    }
 
-   public static void putSync(String url, JSONObject jsonBody, OneSignalRestClient.ResponseHandler responseHandler) {
+   public static void putSync(String url, JSONObject jsonBody, OneSignalRestClient.ResponseHandler responseHandler) throws JSONException {
       trackRequest(REST_METHOD.PUT, jsonBody, url);
 
       freezeSyncCall();
@@ -232,7 +274,7 @@ public class ShadowOneSignalRestClient {
          responseHandler.onSuccess(response);
    }
 
-   public static void put(String url, JSONObject jsonBody, OneSignalRestClient.ResponseHandler responseHandler) {
+   public static void put(String url, JSONObject jsonBody, OneSignalRestClient.ResponseHandler responseHandler) throws JSONException {
       trackRequest(REST_METHOD.PUT, jsonBody, url);
 
       if (doFail(responseHandler, failNextPut)) return;
@@ -240,19 +282,24 @@ public class ShadowOneSignalRestClient {
       responseHandler.onSuccess("{}");
    }
 
-   public static void get(final String url, final OneSignalRestClient.ResponseHandler responseHandler) {
+   public static void get(final String url, final OneSignalRestClient.ResponseHandler responseHandler, String cacheKey) throws JSONException {
       trackRequest(REST_METHOD.GET, null, url);
-   
+      if (failGetParams && doFail(responseHandler, true)) return;
+
+      if (doNextSuccessfulGETResponse(url, responseHandler))
+         return;
       if (nextSuccessResponse != null) {
          responseHandler.onSuccess(nextSuccessResponse);
          nextSuccessResponse = null;
       }
       else {
+         if (handleGetIAM(url, responseHandler))
+            return;
+
          try {
-            JSONObject getResponseJson = new JSONObject("{\"awl_list\": {" +
-                  "\"IlIfoQBT5jXgkgn6nBsIrGJn5t0Yd91GqKAGoApIYzk=\": 1," +
-                  "\"Q3zjDf/4NxXU1QpN9WKp/iwVYNPQZ0js2EDDNO+eo0o=\": 1" +
-                  "}, \"android_sender_id\": \"87654321\"}");
+            JSONObject getResponseJson = new JSONObject(
+               "{\"awl_list\": {}, \"android_sender_id\": \"87654321\"}"
+            );
             if (paramExtras != null) {
                Iterator<String> keys = paramExtras.keys();
                while(keys.hasNext()) {
@@ -267,16 +314,35 @@ public class ShadowOneSignalRestClient {
       }
    }
 
-   public static void getSync(final String url, final OneSignalRestClient.ResponseHandler responseHandler) {
+   public static void getSync(final String url, final OneSignalRestClient.ResponseHandler responseHandler, String cacheKey) throws JSONException {
       trackRequest(REST_METHOD.GET, null, url);
 
       if (doFail(responseHandler)) return;
 
-      if (nextSuccessfulGETResponse != null) {
+      if (doNextSuccessfulGETResponse(url, responseHandler))
+         return;
+
+      if (handleGetIAM(url, responseHandler))
+         return;
+
+      responseHandler.onSuccess("{}");
+   }
+
+   private static boolean doNextSuccessfulGETResponse(final String url, final OneSignalRestClient.ResponseHandler responseHandler) {
+      if (nextSuccessfulGETResponse != null &&
+         (nextSuccessfulGETResponsePattern == null || nextSuccessfulGETResponsePattern.matcher(url).matches())) {
          responseHandler.onSuccess(nextSuccessfulGETResponse);
          nextSuccessfulGETResponse = null;
+         return true;
       }
-      else
-         responseHandler.onSuccess("{}");
+      return false;
+   }
+
+   private static boolean handleGetIAM(final String url, final OneSignalRestClient.ResponseHandler responseHandler) {
+      if (!url.startsWith("in_app_messages"))
+         return false;
+
+      responseHandler.onSuccess(IAM_GET_HTML_RESPONSE);
+      return true;
    }
 }

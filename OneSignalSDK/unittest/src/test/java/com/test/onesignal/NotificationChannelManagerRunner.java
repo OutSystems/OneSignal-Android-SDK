@@ -7,8 +7,11 @@ import android.app.NotificationManager;
 import android.content.Context;
 
 import com.onesignal.ShadowOSUtils;
+import com.onesignal.ShadowOneSignal;
 import com.onesignal.ShadowRoboNotificationManager;
 import com.onesignal.example.BlankActivity;
+
+import junit.framework.Assert;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -22,6 +25,8 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowLog;
+
+import java.math.BigInteger;
 
 import static com.onesignal.OneSignalPackagePrivateHelper.NotificationChannelManager_createNotificationChannel;
 import static com.onesignal.OneSignalPackagePrivateHelper.NotificationChannelManager_processChannelList;
@@ -167,7 +172,7 @@ public class NotificationChannelManagerRunner {
       createChannel("local_existing_id");
       createChannel("OS_existing_id");
    
-      NotificationChannelManager_processChannelList(blankActivity, new JSONObject());
+      NotificationChannelManager_processChannelList(blankActivity, null);
       
       assertNotNull(getChannel("local_existing_id"));
       assertNotNull(getChannel("OS_existing_id"));
@@ -185,10 +190,8 @@ public class NotificationChannelManagerRunner {
       channelItem.put("chnl", channelItemChnl);
    
       channelList.put(channelItem);
-      JSONObject payload = new JSONObject();
-      payload.put("chnl_lst", channelList);
       
-      NotificationChannelManager_processChannelList(blankActivity, payload);
+      NotificationChannelManager_processChannelList(blankActivity, channelList);
       
       assertNotNull(getChannel("local_existing_id"));
       assertNotNull(getChannel("OS_id1"));
@@ -196,7 +199,7 @@ public class NotificationChannelManagerRunner {
    
    @Test
    public void processPayloadDeletingOldChannel() throws Exception {
-      NotificationChannelManager_processChannelList(blankActivity, createBasicChannelListPayload());
+      NotificationChannelManager_processChannelList(blankActivity, createBasicChannelListPayload().optJSONArray("chnl_lst"));
       assertChannelsForBasicChannelList();
    }
    
@@ -221,12 +224,32 @@ public class NotificationChannelManagerRunner {
       
       channelProperties.put("grp_id", "grp_id1");
    
-      NotificationChannelManager_processChannelList(blankActivity, payload);
+      NotificationChannelManager_processChannelList(blankActivity, payload.optJSONArray("chnl_lst"));
       
       NotificationChannel channel = getChannel("OS_id1");
       assertEquals("en_nm", channel.getName());
       assertEquals("en_dscr", channel.getDescription());
       assertEquals("en_grp_nm", ShadowRoboNotificationManager.lastChannelGroup.getName());
+   }
+
+   @Test
+   @Config(shadows = {ShadowOneSignal.class})
+   public void handleInvalidColorCode() throws Exception {
+      JSONObject payload = new JSONObject();
+      JSONObject chnl = new JSONObject();
+
+      chnl.put("id", "test_id");
+      chnl.put("nm", "Test Name");
+      payload.put("ledc", "FFFFFFFFY");
+      payload.put("chnl", chnl.toString());
+
+      NotificationChannelManager_createNotificationChannel(blankActivity, payload);
+
+      // check default to white
+      NotificationChannel channel = ShadowRoboNotificationManager.lastChannel;
+      BigInteger ledColor = new BigInteger("FFFFFFFF", 16);
+      assertEquals(ledColor.intValue(), channel.getLightColor());
+      assertTrue(ShadowOneSignal.messages.contains("OneSignal LED Color Settings: ARGB Hex value incorrect format (E.g: FF9900FF)"));
    }
    
    // Starting helper methods
