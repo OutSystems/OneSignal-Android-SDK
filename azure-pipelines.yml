@@ -16,13 +16,13 @@ steps:
   inputs:
     workingDirectory: './OneSignalSDK'
     gradleWrapperFile: './OneSignalSDK/gradlew'
-    gradleOptions: '-Xmx4096M -x :unittest:check'
+    gradleOptions: '-Xmx4096M'
     javaHomeOption: 'JDKVersion'
     jdkVersionOption: '1.8'
     jdkArchitectureOption: 'x64'
     publishJUnitResults: false
     testResultsFiles: '**/TEST-*.xml'
-    tasks: 'clean build'
+    tasks: 'clean build -x :unittest:check'
 - task: CmdLine@2
   displayName: Validate pom.xml
   inputs:
