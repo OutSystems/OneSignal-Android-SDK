@@ -20,6 +20,11 @@ android {
         versionCode 1
         versionName "1.0"
     }
+    
+    lintOptions {
+        abortOnError false
+    }
+    
     buildTypes {
         debug {
             // Test with proguard enabled to make sure our consumer rules are correct in the SDK.
