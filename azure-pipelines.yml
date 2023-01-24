@@ -1,0 +1,48 @@
+# Gradle
+# Build your Java project and run tests with Gradle using a Gradle wrapper script.
+# Add steps that analyze code, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/java
+
+trigger:
+- main
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+- task: Gradle@2
+  displayName: Build Project
+  inputs:
+    workingDirectory: ''
+    gradleWrapperFile: 'gradlew'
+    gradleOptions: '-Xmx4096M'
+    javaHomeOption: 'JDKVersion'
+    jdkVersionOption: '1.8'
+    jdkArchitectureOption: 'x64'
+    publishJUnitResults: true
+    testResultsFiles: '**/TEST-*.xml'
+    tasks: 'clean build'
+- task: CmdLine@2
+  displayName: Validate pom.xml
+  inputs:
+    script: |
+      /usr/bin/mvn -version
+      /usr/bin/mvn -f /home/vsts/work/1/s/pom.xml help:effective-pom
+- task: MavenAuthenticate@0
+  displayName: Authenticate in public repo
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+  inputs:
+    artifactsFeeds: 'PublicArtifactRepository'
+- task: Bash@3
+  displayName: Deploy file
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+  inputs:
+    targetType: 'inline'
+    script: |
+      /usr/bin/mvn deploy:deploy-file \
+      -DpomFile=/home/vsts/work/1/s/pom.xml \
+      -DgeneratePom=true \
+      -Dfile=build/outputs/aar/OneSignal-Android-SDK.aar \
+      -Dpackaging=aar \
+      -DrepositoryId=PublicArtifactRepository \
+      -Durl=https://pkgs.dev.azure.com/OutSystemsRD/9e79bc5b-69b2-4476-9ca5-d67594972a52/_packaging/PublicArtifactRepository/maven/v1
