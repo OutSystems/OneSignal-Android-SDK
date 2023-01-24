@@ -13,7 +13,7 @@ steps:
 - task: Gradle@2
   displayName: Build Project
   inputs:
-    workingDirectory: ''
+    workingDirectory: './OneSignalSDK'
     gradleWrapperFile: 'gradlew'
     gradleOptions: '-Xmx4096M'
     javaHomeOption: 'JDKVersion'
