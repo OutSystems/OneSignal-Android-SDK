@@ -10,10 +10,11 @@ pool:
   vmImage: ubuntu-latest
 
 steps:
+
 - task: Gradle@2
   displayName: Build Project
   inputs:
-    workingDirectory: ''
+    workingDirectory: './OneSignalSDK'
     gradleWrapperFile: './OneSignalSDK/gradlew'
     gradleOptions: '-Xmx4096M'
     javaHomeOption: 'JDKVersion'
