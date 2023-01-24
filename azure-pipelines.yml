@@ -13,8 +13,8 @@ steps:
 - task: Gradle@2
   displayName: Build Project
   inputs:
-    workingDirectory: './OneSignalSDK'
-    gradleWrapperFile: 'gradlew'
+    workingDirectory: ''
+    gradleWrapperFile: './OneSignalSDK/gradlew'
     gradleOptions: '-Xmx4096M'
     javaHomeOption: 'JDKVersion'
     jdkVersionOption: '1.8'
