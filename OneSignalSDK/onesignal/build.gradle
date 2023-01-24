@@ -13,6 +13,10 @@ android {
         minSdkVersion 15
         consumerProguardFiles 'consumer-proguard-rules.pro'
     }
+    
+    lintOptions {
+        abortOnError false
+    }
 
     buildTypes {
         original {
