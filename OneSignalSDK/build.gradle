@@ -14,18 +14,9 @@ buildscript {
         maven { url 'http://developer.huawei.com/repo/' }
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:3.5.0'
-
-        classpath 'com.google.gms:google-services:4.3.2'
+        classpath 'com.android.tools.build:gradle:3.6.2'
+        classpath 'com.google.gms:google-services:4.3.3'
         classpath 'com.huawei.agconnect:agcp:1.2.1.301'
-
-        // com.huawei.agconnect Gradle Plugin
-
-        // OneSignal-Gradle-Plugin - Local testing
-        // classpath 'com.onesignal:onesignal-gradle-plugin:[0.8.1, 0.99.99]'
-
-        // OneSignal-Gradle-Plugin - Public version
-        // classpath 'gradle.plugin.com.onesignal:onesignal-gradle-plugin:[0.8.1, 0.99.99]'
     }
 }
 

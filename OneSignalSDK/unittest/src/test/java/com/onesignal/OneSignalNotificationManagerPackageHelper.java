@@ -8,7 +8,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
 import android.service.notification.StatusBarNotification;
-import android.support.annotation.RequiresApi;
+import androidx.annotation.RequiresApi;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
