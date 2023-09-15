@@ -31,12 +31,12 @@ steps:
       /usr/bin/mvn -f /home/vsts/work/1/s/pom.xml help:effective-pom
 - task: MavenAuthenticate@0
   displayName: Authenticate in public repo
-  condition: eq(variables['Build.SourceBranch'], 'refs/heads/outsystems')
+  #condition: eq(variables['Build.SourceBranch'], 'refs/heads/outsystems')
   inputs:
     artifactsFeeds: 'PublicArtifactRepository'
 - task: Bash@3
   displayName: Deploy file
-  condition: eq(variables['Build.SourceBranch'], 'refs/heads/outsystems')
+  #condition: eq(variables['Build.SourceBranch'], 'refs/heads/outsystems')
   inputs:
     targetType: 'inline'
     script: |
