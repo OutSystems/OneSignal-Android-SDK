@@ -3,7 +3,6 @@ package com.onesignal;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-
 public interface OSLogger {
 
     void verbose(@NonNull String message);

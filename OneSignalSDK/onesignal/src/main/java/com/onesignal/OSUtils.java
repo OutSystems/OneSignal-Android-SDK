@@ -45,7 +45,6 @@ import android.os.Looper;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationManagerCompat;
-
 import android.telephony.TelephonyManager;
 
 import com.google.android.gms.common.GoogleApiAvailability;
