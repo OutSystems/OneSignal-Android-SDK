@@ -29,7 +29,6 @@ package com.onesignal;
 
 import android.content.ComponentName;
 import android.content.Context;
-
 import androidx.browser.customtabs.CustomTabsCallback;
 import androidx.browser.customtabs.CustomTabsClient;
 import androidx.browser.customtabs.CustomTabsServiceConnection;
