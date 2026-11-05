@@ -41,6 +41,7 @@ import android.content.res.Resources;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.util.DisplayMetrics;
 import android.net.Uri;
 import android.os.Build;
 import android.service.notification.StatusBarNotification;
@@ -778,6 +779,9 @@ class GenerateNotification {
          bg_image = getBitmapFromAssetsOrResourceName("onesignal_bgimage_default_image");
 
       if (bg_image != null) {
+         // Android 17 enforces size limits on custom notification views, so only hand the
+         //    RemoteViews a bitmap no larger than the area it is displayed in.
+         bg_image = resizeBitmapForBackgroundImageArea(bg_image);
          RemoteViews customView = new RemoteViews(currentContext.getPackageName(), R.layout.onesignal_bgimage_notif_layout);
          customView.setTextViewText(R.id.os_bgimage_notif_title, getTitle(gcmBundle));
          customView.setTextViewText(R.id.os_bgimage_notif_body, gcmBundle.optString("alert"));
@@ -811,6 +815,37 @@ class GenerateNotification {
          // Future: Create an extended image option, will need its own layout.
          notifBuilder.setStyle(null);
       }
+   }
+
+   // Height of the background image area, must match the layout height in onesignal_bgimage_notif_layout.xml
+   private static final int BG_IMAGE_HEIGHT_DP = 64;
+
+   // Downscales (never upscales) the bitmap, keeping its aspect ratio, so it fits inside the area the
+   //    custom view displays it in. Large bitmaps in a RemoteViews are sent over Binder and may be
+   //    rejected by the system (e.g. Android 17 custom view limits, TransactionTooLargeException).
+   static Bitmap resizeBitmapForBackgroundImageArea(Bitmap bitmap) {
+      if (bitmap == null)
+         return null;
+
+      try {
+         DisplayMetrics metrics = contextResources.getDisplayMetrics();
+         int maxHeight = Math.round(BG_IMAGE_HEIGHT_DP * metrics.density);
+         int maxWidth = metrics.widthPixels;
+         int width = bitmap.getWidth();
+         int height = bitmap.getHeight();
+
+         if (width <= maxWidth && height <= maxHeight)
+            return bitmap;
+
+         float ratio = Math.min((float) maxWidth / width, (float) maxHeight / height);
+         int newWidth = Math.max(1, Math.round(width * ratio));
+         int newHeight = Math.max(1, Math.round(height * ratio));
+         return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
+      } catch (Throwable t) {
+         OneSignal.Log(OneSignal.LOG_LEVEL.WARN, "Could not resize background image!", t);
+      }
+
+      return bitmap;
    }
 
    private static void setTextColor(RemoteViews customView, JSONObject gcmBundle, int viewId, String colorPayloadKey, String colorDefaultResource) {
