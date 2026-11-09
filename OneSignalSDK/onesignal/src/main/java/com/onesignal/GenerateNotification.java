@@ -854,10 +854,15 @@ class GenerateNotification {
          int width = bitmap.getWidth();
          int height = bitmap.getHeight();
 
-         if (width <= maxWidth && height <= maxHeight)
+         // A max size <= 0 (NO_MAX_SIZE) means that dimension is unconstrained, keep the original size.
+         float ratio = Float.MAX_VALUE;
+         if (maxWidth > 0)
+            ratio = Math.min(ratio, (float) maxWidth / width);
+         if (maxHeight > 0)
+            ratio = Math.min(ratio, (float) maxHeight / height);
+         if (ratio >= 1f)
             return bitmap;
 
-         float ratio = Math.min((float) maxWidth / width, (float) maxHeight / height);
          int newWidth = Math.max(1, Math.round(width * ratio));
          int newHeight = Math.max(1, Math.round(height * ratio));
          return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
