@@ -58,6 +58,8 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.math.BigInteger;
 import java.net.URL;
@@ -248,7 +250,7 @@ class GenerateNotification {
          notifBuilder.setLargeIcon(largeIcon);
       }
 
-      Bitmap bigPictureIcon = getBitmap(gcmBundle.optString("bicon", null));
+      Bitmap bigPictureIcon = getBitmap(gcmBundle.optString("bicon", null), BIG_PICTURE_MAX_WIDTH_PX, NO_MAX_SIZE);
       if (bigPictureIcon != null)
          notifBuilder.setStyle(new NotificationCompat.BigPictureStyle().bigPicture(bigPictureIcon).setSummaryText(message));
 
@@ -768,15 +770,16 @@ class GenerateNotification {
 
       Bitmap bg_image = null;
       JSONObject jsonBgImage = null;
+      int[] bgImageMaxSize = getBackgroundImageMaxSize();
       String jsonStrBgImage = gcmBundle.optString("bg_img", null);
 
       if (jsonStrBgImage != null) {
          jsonBgImage = new JSONObject(jsonStrBgImage);
-         bg_image = getBitmap(jsonBgImage.optString("img", null));
+         bg_image = getBitmap(jsonBgImage.optString("img", null), bgImageMaxSize[0], bgImageMaxSize[1]);
       }
 
       if (bg_image == null)
-         bg_image = getBitmapFromAssetsOrResourceName("onesignal_bgimage_default_image");
+         bg_image = getBitmapFromAssetsOrResourceName("onesignal_bgimage_default_image", bgImageMaxSize[0], bgImageMaxSize[1]);
 
       if (bg_image != null) {
          // Android 17 enforces size limits on custom notification views, so only hand the
@@ -820,17 +823,34 @@ class GenerateNotification {
    // Height of the background image area, must match the layout height in onesignal_bgimage_notif_layout.xml
    private static final int BG_IMAGE_HEIGHT_DP = 64;
 
+   // Max width of the big picture when decoding, roughly the width of a notification.
+   private static final int BIG_PICTURE_MAX_WIDTH_PX = 1024;
+
+   // Value for an unconstrained dimension when decoding a bitmap.
+   private static final int NO_MAX_SIZE = 0;
+
+   // Returns {width, height} in px of the area the background image is displayed in.
+   private static int[] getBackgroundImageMaxSize() {
+      try {
+         DisplayMetrics metrics = contextResources.getDisplayMetrics();
+         return new int[] { metrics.widthPixels, Math.round(BG_IMAGE_HEIGHT_DP * metrics.density) };
+      } catch (Throwable t) {
+         return new int[] { NO_MAX_SIZE, NO_MAX_SIZE };
+      }
+   }
+
    // Downscales (never upscales) the bitmap, keeping its aspect ratio, so it fits inside the area the
    //    custom view displays it in. Large bitmaps in a RemoteViews are sent over Binder and may be
    //    rejected by the system (e.g. Android 17 custom view limits, TransactionTooLargeException).
+   // The bitmap is already sampled when decoded, this does the final exact scale.
    static Bitmap resizeBitmapForBackgroundImageArea(Bitmap bitmap) {
       if (bitmap == null)
          return null;
 
       try {
-         DisplayMetrics metrics = contextResources.getDisplayMetrics();
-         int maxHeight = Math.round(BG_IMAGE_HEIGHT_DP * metrics.density);
-         int maxWidth = metrics.widthPixels;
+         int[] maxSize = getBackgroundImageMaxSize();
+         int maxWidth = maxSize[0];
+         int maxHeight = maxSize[1];
          int width = bitmap.getWidth();
          int height = bitmap.getHeight();
 
@@ -869,9 +889,10 @@ class GenerateNotification {
    }
 
    private static Bitmap getLargeIcon(JSONObject gcmBundle) {
-      Bitmap bitmap = getBitmap(gcmBundle.optString("licon"));
+      int[] maxSize = getLargeIconMaxSize();
+      Bitmap bitmap = getBitmap(gcmBundle.optString("licon"), maxSize[0], maxSize[1]);
       if (bitmap == null)
-         bitmap = getBitmapFromAssetsOrResourceName("ic_onesignal_large_icon_default");
+         bitmap = getBitmapFromAssetsOrResourceName("ic_onesignal_large_icon_default", maxSize[0], maxSize[1]);
       
       if (bitmap == null)
          return null;
@@ -880,10 +901,23 @@ class GenerateNotification {
    }
    
    private static Bitmap getDefaultLargeIcon() {
-      Bitmap bitmap = getBitmapFromAssetsOrResourceName("ic_onesignal_large_icon_default");
+      int[] maxSize = getLargeIconMaxSize();
+      Bitmap bitmap = getBitmapFromAssetsOrResourceName("ic_onesignal_large_icon_default", maxSize[0], maxSize[1]);
       return resizeBitmapForLargeIconArea(bitmap);
    }
    
+   // Returns {width, height} in px of the system large icon area.
+   private static int[] getLargeIconMaxSize() {
+      try {
+         return new int[] {
+            (int) contextResources.getDimension(android.R.dimen.notification_large_icon_width),
+            (int) contextResources.getDimension(android.R.dimen.notification_large_icon_height)
+         };
+      } catch (Throwable t) {
+         return new int[] { NO_MAX_SIZE, NO_MAX_SIZE };
+      }
+   }
+
    // Resize to prevent extra cropping and boarders.
    private static Bitmap resizeBitmapForLargeIconArea(Bitmap bitmap) {
       if (bitmap == null)
@@ -912,37 +946,98 @@ class GenerateNotification {
       return bitmap;
    }
 
-   private static Bitmap getBitmapFromAssetsOrResourceName(String bitmapStr) {
-      try {
-         Bitmap bitmap = null;
+   // Largest power of 2 inSampleSize that keeps the decoded bitmap at least as large as the
+   //    original would be after being scaled to fit inside maxWidth x maxHeight (<= 0 means no limit).
+   // Never upscales; returns 1 if the bitmap already fits.
+   static int calculateInSampleSize(int width, int height, int maxWidth, int maxHeight) {
+      if (width <= 0 || height <= 0)
+         return 1;
 
-         try {
-            bitmap = BitmapFactory.decodeStream(currentContext.getAssets().open(bitmapStr));
-         } catch (Throwable t) {}
+      float ratio = Float.MAX_VALUE;
+      if (maxWidth > 0)
+         ratio = Math.min(ratio, (float) maxWidth / width);
+      if (maxHeight > 0)
+         ratio = Math.min(ratio, (float) maxHeight / height);
+      if (ratio >= 1f)
+         return 1;
+
+      float targetWidth = width * ratio;
+      float targetHeight = height * ratio;
+      int inSampleSize = 1;
+      while ((width / (inSampleSize * 2)) >= targetWidth && (height / (inSampleSize * 2)) >= targetHeight)
+         inSampleSize *= 2;
+      return inSampleSize;
+   }
+
+   // Reads the whole stream and always closes it.
+   private static byte[] readAndClose(InputStream inputStream) throws java.io.IOException {
+      try {
+         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+         byte[] buffer = new byte[8192];
+         int read;
+         while ((read = inputStream.read(buffer)) != -1)
+            outputStream.write(buffer, 0, read);
+         return outputStream.toByteArray();
+      } finally {
+         try { inputStream.close(); } catch (Throwable t) {}
+      }
+   }
+
+   // Bounds pass followed by a sampled decode, so the full size bitmap is never held in memory.
+   private static Bitmap decodeSampledBitmap(byte[] data, int maxWidth, int maxHeight) {
+      BitmapFactory.Options options = new BitmapFactory.Options();
+      options.inJustDecodeBounds = true;
+      BitmapFactory.decodeByteArray(data, 0, data.length, options);
+
+      options.inJustDecodeBounds = false;
+      options.inSampleSize = calculateInSampleSize(options.outWidth, options.outHeight, maxWidth, maxHeight);
+      return BitmapFactory.decodeByteArray(data, 0, data.length, options);
+   }
+
+   private static Bitmap decodeSampledAsset(String assetName, int maxWidth, int maxHeight) {
+      try {
+         return decodeSampledBitmap(readAndClose(currentContext.getAssets().open(assetName)), maxWidth, maxHeight);
+      } catch (Throwable t) {}
+      return null;
+   }
+
+   // Same as decodeSampledBitmap but through decodeResource so density scaling still applies.
+   private static Bitmap decodeSampledResource(int resourceId, int maxWidth, int maxHeight) {
+      BitmapFactory.Options options = new BitmapFactory.Options();
+      options.inJustDecodeBounds = true;
+      BitmapFactory.decodeResource(contextResources, resourceId, options);
+
+      options.inJustDecodeBounds = false;
+      options.inSampleSize = calculateInSampleSize(options.outWidth, options.outHeight, maxWidth, maxHeight);
+      return BitmapFactory.decodeResource(contextResources, resourceId, options);
+   }
+
+   private static Bitmap getBitmapFromAssetsOrResourceName(String bitmapStr, int maxWidth, int maxHeight) {
+      try {
+         Bitmap bitmap = decodeSampledAsset(bitmapStr, maxWidth, maxHeight);
 
          if (bitmap != null)
             return bitmap;
 
          final List<String> image_extensions = Arrays.asList(".png", ".webp", ".jpg", ".gif", ".bmp");
          for (String extension : image_extensions) {
-            try {
-               bitmap = BitmapFactory.decodeStream(currentContext.getAssets().open(bitmapStr + extension));
-            } catch (Throwable t) {}
+            bitmap = decodeSampledAsset(bitmapStr + extension, maxWidth, maxHeight);
             if (bitmap != null)
                return bitmap;
          }
 
          int bitmapId = getResourceIcon(bitmapStr);
          if (bitmapId != 0)
-            return BitmapFactory.decodeResource(contextResources, bitmapId);
+            return decodeSampledResource(bitmapId, maxWidth, maxHeight);
       } catch (Throwable t) {}
 
       return null;
    }
 
-   private static Bitmap getBitmapFromURL(String location) {
+   private static Bitmap getBitmapFromURL(String location, int maxWidth, int maxHeight) {
       try {
-         return BitmapFactory.decodeStream(new URL(location).openConnection().getInputStream());
+         InputStream inputStream = new URL(location).openConnection().getInputStream();
+         return decodeSampledBitmap(readAndClose(inputStream), maxWidth, maxHeight);
       } catch (Throwable t) {
          OneSignal.Log(OneSignal.LOG_LEVEL.WARN, "Could not download image!", t);
       }
@@ -950,15 +1045,15 @@ class GenerateNotification {
       return null;
    }
 
-   private static Bitmap getBitmap(String name) {
+   private static Bitmap getBitmap(String name, int maxWidth, int maxHeight) {
       if (name == null)
          return null;
       String trimmedName = name.trim();
       
       if (trimmedName.startsWith("http://") || trimmedName.startsWith("https://"))
-         return getBitmapFromURL(trimmedName);
+         return getBitmapFromURL(trimmedName, maxWidth, maxHeight);
 
-      return getBitmapFromAssetsOrResourceName(name);
+      return getBitmapFromAssetsOrResourceName(name, maxWidth, maxHeight);
    }
 
    private static int getResourceIcon(String iconName) {
