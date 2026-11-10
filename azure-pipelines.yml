@@ -29,7 +29,7 @@ steps:
   inputs:
     script: |
       /usr/bin/mvn -version
-      /usr/bin/mvn -f /home/vsts/work/1/s/pom.xml help:effective-pom
+      /usr/bin/mvn -f $(Build.SourcesDirectory)/pom.xml help:effective-pom
 - task: MavenAuthenticate@0
   displayName: Authenticate in public repo
   condition: eq(variables['Build.SourceBranch'], 'refs/heads/outsystems')
@@ -42,9 +42,9 @@ steps:
     targetType: 'inline'
     script: |
       /usr/bin/mvn deploy:deploy-file \
-      -DpomFile=/home/vsts/work/1/s/pom.xml \
+      -DpomFile=$(Build.SourcesDirectory)/pom.xml \
       -DgeneratePom=true \
-      -Dfile=./OneSignalSDK/onesignal/build/outputs/aar/onesignal-release.aar \
+      -Dfile=$(Build.SourcesDirectory)/OneSignalSDK/onesignal/build/outputs/aar/onesignal-release.aar \
       -Dpackaging=aar \
       -DrepositoryId=PublicArtifactRepository \
       -Durl=https://pkgs.dev.azure.com/OutSystemsRD/9e79bc5b-69b2-4476-9ca5-d67594972a52/_packaging/PublicArtifactRepository/maven/v1
